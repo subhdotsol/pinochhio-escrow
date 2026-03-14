@@ -1,22 +1,23 @@
 use pinocchio::{
-    AccountView, Address, ProgramResult, error::ProgramError,
+    AccountView, Address, ProgramResult,
     cpi::{Seed, Signer},
+    error::ProgramError,
 };
-use pinocchio_token::{instructions::Transfer, instructions::CloseAccount, state::TokenAccount};
+use pinocchio_token::{instructions::CloseAccount, instructions::Transfer, state::TokenAccount};
 
 use crate::state::Escrow;
 
 /// # Take Instruction
-/// 
+///
 /// This function allows a taker to accept an existing escrow offer and complete the trade.
 /// The taker sends their token Y and receives the maker's token X that was locked in the vault.
-/// 
+///
 /// ## Business Logic:
 /// 1. Taker verifies the escrow details and agrees to the trade
 /// 2. Taker sends the requested amount of token Y to the maker
 /// 3. Taker receives the offered token X from the vault
 /// 4. The escrow and vault accounts are closed, returning rent to the maker
-/// 
+///
 /// ## Accounts expected:
 /// 0. `[signer]` taker - The account accepting the escrow trade
 /// 1. `[]` maker - The original creator of the escrow
@@ -29,19 +30,26 @@ use crate::state::Escrow;
 /// 8. `[mut]` escrow - Account storing the escrow state data
 /// 9. `[]` token_program - SPL Token program for token operations
 /// 10. `[]` system_program - System program
-pub fn take(
-    _program_id: &Address,
-    accounts: &[AccountView],
-    _data: &[u8],
-) -> ProgramResult {
+pub fn take(program_id: &Address, accounts: &[AccountView], _data: &[u8]) -> ProgramResult {
     // Unpack all required accounts for the take operation
     let [
-        taker, maker, mint_x, mint_y, taker_ata_x, taker_ata_y, maker_ata_y, vault, escrow,
-        _token_program, _system_program, _remaining @ ..
-    ] = accounts else {
+        taker,
+        maker,
+        mint_x,
+        mint_y,
+        taker_ata_x,
+        taker_ata_y,
+        maker_ata_y,
+        vault,
+        escrow,
+        _token_program,
+        _system_program,
+        _remaining @ ..,
+    ] = accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
-    
+
     if !taker.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -49,7 +57,7 @@ pub fn take(
     unsafe {
         // Access the escrow data to verify trade parameters
         let escrow_account = Escrow::from_account_view_unchecked(escrow);
-        
+
         // Verify that the provided token mints match what's stored in the escrow
         // This prevents trading with incorrect tokens
         assert_eq!(escrow_account.mint_x, *mint_x.address());
@@ -63,7 +71,7 @@ pub fn take(
         let bump = [escrow_account.bump];
         #[allow(unused_variables)]
         let seed = [(b"escrow"), maker.address().as_ref(), bump.as_ref()];
-        
+
         #[cfg(any(target_os = "solana", target_arch = "bpf", feature = "curve25519"))]
         let escrow_pda = Address::create_program_address(&seed, program_id).unwrap();
         #[cfg(not(any(target_os = "solana", target_arch = "bpf", feature = "curve25519")))]
@@ -78,11 +86,16 @@ pub fn take(
             to: maker_ata_y,
             authority: taker,
             amount: escrow_account.amount,
-        }.invoke()?;
+        }
+        .invoke()?;
 
         // Prepare the PDA signer seeds for the escrow
         // This allows the program to sign for operations on behalf of the escrow PDA
-        let seed = [Seed::from(b"escrow"), Seed::from(maker.address().as_ref()), Seed::from(&bump)];
+        let seed = [
+            Seed::from(b"escrow"),
+            Seed::from(maker.address().as_ref()),
+            Seed::from(&bump),
+        ];
         let signers = Signer::from(&seed);
 
         // Second leg of the trade: Send tokens from vault to taker
@@ -92,7 +105,8 @@ pub fn take(
             to: taker_ata_x,
             authority: escrow,
             amount: vault_account.amount(),
-        }.invoke_signed(&[signers.clone()])?;
+        }
+        .invoke_signed(&[signers.clone()])?;
 
         // Close the vault account and return the rent to the maker
         // The maker paid to create this account, so they receive the lamports
@@ -100,14 +114,15 @@ pub fn take(
             account: vault,
             destination: maker,
             authority: escrow,
-        }.invoke_signed(&[signers])?;
+        }
+        .invoke_signed(&[signers])?;
 
         // Manually close the escrow account and return rent to the maker
         // This completes the trade by cleaning up all accounts
-        
+
         let maker_lamports = maker.lamports();
         let escrow_lamports = escrow.lamports();
-        
+
         maker.set_lamports(maker_lamports + escrow_lamports);
         escrow.set_lamports(0);
     }
