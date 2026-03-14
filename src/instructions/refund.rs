@@ -1,8 +1,6 @@
-use pinocchio::{
-    AccountView, Address, ProgramResult,
-};
+use pinocchio::{AccountView, Address, ProgramResult};
 
-pub fn take(
+pub fn refund(
     _program_id: &Address,
     _accounts: &[AccountView],
     _data: &[u8],
