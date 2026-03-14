@@ -1,6 +1,7 @@
 use pinocchio::{AccountView, Address};
 
 #[repr(C)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Escrow {
     pub maker: Address,
     pub mint_x: Address,
@@ -23,4 +24,3 @@ impl Escrow {
         }
     }
 }
-
