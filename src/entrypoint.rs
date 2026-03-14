@@ -1,6 +1,6 @@
 use pinocchio::{AccountView, Address, ProgramResult, entrypoint};
 
-use crate::processor::Processor;
+use crate::processor;
 
 entrypoint!(process_instruction);
 
@@ -9,5 +9,5 @@ fn process_instruction(
     accounts: &[AccountView],
     data: &[u8],
 ) -> ProgramResult {
-    Processor::process(program_id, accounts, data)
+    processor::process_instruction(program_id, accounts, data)
 }
